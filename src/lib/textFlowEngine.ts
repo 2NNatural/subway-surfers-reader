@@ -1,26 +1,7 @@
+import { layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import type { FlowLine, CharSilhouette } from '../types'
 
-interface PreparedTextWithSegments {
-  [key: string]: unknown
-}
-
-interface LayoutCursor {
-  segmentIndex: number
-  graphemeIndex: number
-}
-
-interface LayoutLineResult {
-  text: string
-  width: number
-  start: LayoutCursor
-  end: LayoutCursor
-}
-
-type LayoutNextLineFn = (
-  prepared: PreparedTextWithSegments,
-  cursor: LayoutCursor,
-  maxWidth: number,
-) => LayoutLineResult | null
+type LayoutNextLineFn = typeof layoutNextLine
 
 const GAP = 14 // px gap between text and character edge
 const MIN_GUTTER = 40 // minimum width to lay out text in
