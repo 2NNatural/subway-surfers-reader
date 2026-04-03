@@ -1,12 +1,6 @@
-import type { FlowLine } from '../types'
-import { getBlobEdges } from './blobContour'
-
-// We need to check the actual pretext API at runtime.
-// The plan uses layoutNextLine(prepared, cursor, maxWidth)
-// but the real API may differ. We'll adapt.
+import type { FlowLine, CharSilhouette } from '../types'
 
 interface PreparedTextWithSegments {
-  // opaque type from pretext
   [key: string]: unknown
 }
 
@@ -28,7 +22,7 @@ type LayoutNextLineFn = (
   maxWidth: number,
 ) => LayoutLineResult | null
 
-const GAP = 20 // px gap between text and blob edge
+const GAP = 14 // px gap between text and character edge
 const MIN_GUTTER = 40 // minimum width to lay out text in
 
 export function flowTextAroundBlob(
@@ -42,12 +36,12 @@ export function flowTextAroundBlob(
   blobWidth: number,
   blobHeight: number,
   padding: number,
+  silhouette: CharSilhouette | null,
 ): { lines: FlowLine[]; totalHeight: number } {
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
   let y = 0
   const lines: FlowLine[] = []
 
-  // Blob center in document space
   const blobCenterDocY = viewportHeight / 2 + scrollTop
   const blobCenterX = viewportWidth / 2
 
@@ -57,7 +51,6 @@ export function flowTextAroundBlob(
 
   if (fullWidth <= 0) return { lines: [], totalHeight: 0 }
 
-  // Safety limit to prevent infinite loops
   const MAX_LINES = 50000
   let lineCount = 0
 
@@ -65,15 +58,34 @@ export function flowTextAroundBlob(
     const lineCenterY = y + lineHeight / 2
     const yFromBlobCenter = lineCenterY - blobCenterDocY
 
-    const edges = getBlobEdges(yFromBlobCenter, blobHeight, blobWidth)
+    // Check if this line is within the character's vertical range
+    let exclusionLeft: number | null = null
+    let exclusionRight: number | null = null
 
-    if (edges) {
-      const blobLeftEdge = blobCenterX + edges.left - GAP
-      const blobRightEdge = blobCenterX + edges.right + GAP
-      const leftWidth = Math.max(0, blobLeftEdge - contentLeft)
-      const rightWidth = Math.max(0, contentRight - blobRightEdge)
+    if (silhouette && silhouette.height > 0) {
+      // Map document Y to silhouette row
+      const silRow = Math.round(yFromBlobCenter + silhouette.height / 2)
+      if (silRow >= 0 && silRow < silhouette.height) {
+        const left = silhouette.leftEdges[silRow]
+        const right = silhouette.rightEdges[silRow]
+        // Only create exclusion if this row has actual character pixels
+        if (right > left) {
+          exclusionLeft = blobCenterX + left - GAP
+          exclusionRight = blobCenterX + right + GAP
+        }
+      }
+    } else {
+      // Fallback to simple rectangular exclusion if no silhouette yet
+      if (Math.abs(yFromBlobCenter) < blobHeight / 2) {
+        exclusionLeft = blobCenterX - blobWidth / 2 - GAP
+        exclusionRight = blobCenterX + blobWidth / 2 + GAP
+      }
+    }
 
-      // Left gutter
+    if (exclusionLeft !== null && exclusionRight !== null) {
+      const leftWidth = Math.max(0, exclusionLeft - contentLeft)
+      const rightWidth = Math.max(0, contentRight - exclusionRight)
+
       if (leftWidth >= MIN_GUTTER) {
         const left = layoutNextLine(prepared, cursor, leftWidth)
         if (!left) break
@@ -81,22 +93,15 @@ export function flowTextAroundBlob(
         cursor = left.end
       }
 
-      // Right gutter (same Y row)
       if (rightWidth >= MIN_GUTTER) {
         const right = layoutNextLine(prepared, cursor, rightWidth)
         if (!right) break
-        lines.push({
-          text: right.text,
-          x: blobRightEdge,
-          y,
-          width: right.width,
-        })
+        lines.push({ text: right.text, x: exclusionRight, y, width: right.width })
         cursor = right.end
       }
 
-      // If both gutters are too narrow, skip this line
       if (leftWidth < MIN_GUTTER && rightWidth < MIN_GUTTER) {
-        // no text on this line, just advance
+        // both gutters too narrow, skip line
       }
     } else {
       const line = layoutNextLine(prepared, cursor, fullWidth)

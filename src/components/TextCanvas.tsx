@@ -1,8 +1,8 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useRef, useCallback, useState, useEffect, type MutableRefObject } from 'react'
 import { layoutNextLine, layout, type PreparedTextWithSegments } from '@chenglou/pretext'
 import { useAnimationFrame } from '../hooks/useAnimationFrame'
 import { flowTextAroundBlob } from '../lib/textFlowEngine'
-import type { FlowLine } from '../types'
+import type { FlowLine, CharSilhouette } from '../types'
 
 type Props = {
   prepared: PreparedTextWithSegments
@@ -10,6 +10,7 @@ type Props = {
   lineHeight: number
   blobWidth: number
   blobHeight: number
+  silhouetteRef: MutableRefObject<CharSilhouette | null>
 }
 
 export function TextCanvas({
@@ -18,6 +19,7 @@ export function TextCanvas({
   lineHeight,
   blobWidth,
   blobHeight,
+  silhouetteRef,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -80,6 +82,7 @@ export function TextCanvas({
       blobWidth,
       blobHeight,
       padding,
+      silhouetteRef.current,
     )
 
     linesRef.current = lines

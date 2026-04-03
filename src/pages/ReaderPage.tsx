@@ -1,20 +1,22 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { usePretext } from '../hooks/usePretext'
 import { TextCanvas } from '../components/TextCanvas'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { ReaderControls } from '../components/ReaderControls'
+import type { CharSilhouette } from '../types'
 
 type Props = {
   text: string
   onBack: () => void
 }
 
-const BLOB_WIDTH = 300
-const BLOB_HEIGHT = 400
+const BLOB_WIDTH = 160
+const BLOB_HEIGHT = 220
 
 export function ReaderPage({ text, onBack }: Props) {
   const [fontSize, setFontSize] = useState(18)
   const lineHeight = Math.round(fontSize * 1.6)
+  const silhouetteRef = useRef<CharSilhouette | null>(null)
 
   const prepared = usePretext(text, fontSize)
 
@@ -34,8 +36,13 @@ export function ReaderPage({ text, onBack }: Props) {
         lineHeight={lineHeight}
         blobWidth={BLOB_WIDTH}
         blobHeight={BLOB_HEIGHT}
+        silhouetteRef={silhouetteRef}
       />
-      <VideoPlayer width={BLOB_WIDTH} height={BLOB_HEIGHT} />
+      <VideoPlayer
+        width={BLOB_WIDTH}
+        height={BLOB_HEIGHT}
+        silhouetteRef={silhouetteRef}
+      />
       <ReaderControls
         fontSize={fontSize}
         onFontSizeChange={setFontSize}

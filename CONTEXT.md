@@ -36,38 +36,61 @@
 
 Noah provided a reference image showing text wrapping around an irregular dragon silhouette in a medieval manuscript — the text flows around the character's actual shape, not a rectangle.
 
-**Chosen approach:** Organic blob shape (superellipse n=3) as the exclusion contour. Not the character's pixel silhouette (that would cause text to reshuffle every frame as the character animates).
+**Current implementation:** Real per-frame silhouette tracking. VideoPlayer computes per-row left/right edges of the character each frame. Text flow engine uses those edges (with temporal smoothing) to wrap text tightly around the character's actual outline.
+
+**Previous approach (superseded):** Superellipse (n=3) as a static organic blob contour. Replaced in Session 2 because Noah wanted the text to follow the actual character shape.
 
 ### Video Source
 
-- Noah has a green screen MP4: `~/Downloads/SubwaySurfersJakeRunning(GreenScreen).mp4`
+- Noah has a **magenta** screen MP4 (filename says "GreenScreen" but the actual background is **RGB(255, 0, 246)**, hue ~302°)
 - Copied to: `public/subway-surfers.mp4`
+- Video specs: **720×720**, ~16 seconds, ~20MB
 - Real-time chroma key removal renders the character with transparent background
-- Noah offered: "If it would help, I can upload a green screened character video" and "If an MP4 would be better than iFrame, we can do that too"
 
 ### Video Size
 
-- **Medium (300×400px)** — Noah's choice from options presented
+- **Medium (300×400px)** — Noah's original choice, later tightened
+- **Current display size:** 160×220px (set in `ReaderPage.tsx`)
+- Canvas auto-crops to character bounds each frame, then CSS scales to display size
 
 ---
 
-## Corrections Made This Session
+## Corrections Made Across Sessions
 
-### 1. Chroma Key Not Working
+### Session 1: Chroma Key Targeting Wrong Color
 
 Noah said: **"It doesn't look like a subway surfers character at all, did you base it off the video?"**
 
-Root cause: I wrote the chroma key algorithm blindly without inspecting the actual video file. The initial algorithm was too simplistic (basic RGB thresholds). 
+Root cause: Chroma key algorithm was written blindly targeting green (hue 70°–170°). The video background is actually **magenta RGB(255, 0, 246)**. The filename "GreenScreen" was misleading.
 
-Fix attempted: Rewrote with HSL-based detection, native resolution rendering, and edge softening.
+Fix (Session 2): Used Playwright + Canvas to extract a frame and analyze actual pixel data. Rewrote chroma key to target magenta using RGB Euclidean distance.
 
-Noah followed up: **"it still looks the same"**
+### Session 2: Video Not Rendering (Black Rectangle)
 
-**Status: UNRESOLVED.** The chroma key is the #1 blocker. Next session must:
-1. Actually view/inspect the video to understand its green screen characteristics
-2. Install ffmpeg to extract a frame and analyze the color values
-3. Tune the chroma key thresholds based on actual pixel data, not guesses
-4. Consider whether the video needs preprocessing
+Noah said: **"there was no change, it is still a black blob with no color, that is not fitted to a recognizable character shape."**
+
+Root cause: Three compounding issues:
+1. `className="hidden"` uses `display:none` — browsers skip video frame decoding for hidden elements
+2. `video.paused` guard in the animation loop meant nothing rendered if autoplay was blocked
+3. Canvas defaulted to opaque 300×150 when never drawn to
+
+Fix: Replaced `className="hidden"` with offscreen positioning (1×1px, opacity 0). Added `video.play()` with click/keydown fallback. Removed `video.paused` guard.
+
+### Session 2: Huge Black Bubble Around Character
+
+Noah said: **"there's a HUGE black bubble around him. Can we crop to around the sprite exactly?"**
+
+Root cause: The 720×720 video frame was being rendered at 300×400 display size. The character is small within the frame, so most of the canvas was transparent (appears black on dark background), and the 300×400 exclusion zone pushed text far away.
+
+Fix: Added runtime auto-crop — VideoPlayer detects character bounds per frame and only renders the cropped region. Reduced exclusion zone from 300×400 to 160×220.
+
+### Session 2: Text Should Follow Character Shape
+
+Noah said: **"tailor it to actually be a wrap around the character"**
+
+Root cause: The superellipse exclusion zone was a static generic shape, not fitted to the character.
+
+Fix: Replaced the superellipse system with real per-frame silhouette tracking. VideoPlayer builds per-row edge maps during chroma key processing. Text flow engine reads those edges (via shared ref) to create variable-width exclusion zones matching the actual character outline. Temporal smoothing prevents text jitter.
 
 ---
 
@@ -81,22 +104,16 @@ Noah followed up: **"it still looks the same"**
 | PDF Parsing | `pdfjs-dist` | Extracts raw text from uploaded PDFs |
 | Styling | Tailwind CSS v4 | `@tailwindcss/vite` plugin |
 | Font | Inter | Loaded via Google Fonts |
-| Video | HTML5 `<video>` + Canvas chroma key | Green screen MP4, real-time per-pixel processing |
+| Video | HTML5 `<video>` + Canvas chroma key | Magenta screen MP4, real-time per-pixel processing |
+| Dev Tool | Playwright | Installed as devDep for headless frame analysis. Can be removed. |
 
 ### Pretext API (Confirmed from `@chenglou/pretext` v0.0.3)
 
 ```typescript
-// Key imports
 import { prepare, prepareWithSegments, layout, layoutNextLine, layoutWithLines } from '@chenglou/pretext'
 
-// One-time preparation (~19ms for large texts)
 const prepared = prepareWithSegments(text, '18px Inter')
-
-// Full layout (for height estimation)
 const { height, lineCount } = layout(prepared, maxWidth, lineHeight)
-
-// CRITICAL: Variable-width per line (for exclusion zones)
-// This is the core API that makes text wrapping work
 const line = layoutNextLine(prepared, cursor, maxWidth)
 // Returns: { text, width, start: LayoutCursor, end: LayoutCursor } | null
 // cursor = { segmentIndex: number, graphemeIndex: number }
@@ -112,20 +129,46 @@ const line = layoutNextLine(prepared, cursor, maxWidth)
 
 Pretext is measurement-only — it doesn't render. We use `ctx.fillText()` on a fixed Canvas covering the viewport. A scroll container with a spacer div provides native scrollbar behavior.
 
-### Why superellipse exclusion (not pixel-based silhouette tracking)
+### Why per-frame silhouette tracking (not static shape)
 
-The character moves/animates within the video. Tracking exact pixel boundaries per frame would cause text to constantly reshuffle — unreadable. A fixed organic contour (superellipse n=3) provides stable reading. The character animates freely inside the shape.
+The character animates, so the text wrapping follows the actual outline each frame. Temporal smoothing (edges expand instantly, shrink at 4% per frame) prevents text from jittering. This replaced the original superellipse approach because Noah wanted text to follow the real character shape.
 
 ### Why full re-layout per scroll frame
 
-The video is viewport-fixed, so its document-space position changes with every scroll event. This means the exclusion zone moves relative to the text. Rather than caching and invalidating, we re-layout the entire document each frame. At <1ms per layout pass, this is well within the 16ms frame budget.
+The video is viewport-fixed, so its document-space position changes with every scroll event. This means the exclusion zone moves relative to the text. At <1ms per layout pass, this is well within the 16ms frame budget.
 
 ### Why not YouTube iframe
 
-Initially planned as YouTube embed. Changed to local MP4 because:
-1. Noah has a green screen video that needs chroma key processing
+Changed to local MP4 because:
+1. Noah has a chroma-key video that needs pixel processing
 2. Canvas pixel manipulation is impossible on cross-origin iframes
 3. MP4 gives full control over playback and rendering
+
+### Why offscreen positioning (not display:none)
+
+`display:none` prevents browsers from decoding video frames. The `<video>` element is positioned at 1×1px with opacity 0, which keeps it decodable without being visible.
+
+---
+
+## How the Silhouette Wrapping Works
+
+1. **VideoPlayer** renders each frame, runs chroma key, and simultaneously tracks per-row min/max X of non-transparent pixels
+2. Character bounds are auto-cropped (grow-only crop box), canvas resized to crop region
+3. Per-row edges are converted from native video pixels to display coordinates, stored as `CharSilhouette` (Float32Array of left/right offsets from center)
+4. Temporal smoothing: edges expand instantly to wider positions, shrink back at `SHRINK_RATE = 0.04` per frame
+5. `silhouetteRef` (shared React ref) passes the silhouette from VideoPlayer to TextCanvas each frame
+6. **textFlowEngine** reads the silhouette: for each text line at Y, looks up the silhouette row, gets left/right exclusion edges
+7. Two `layoutNextLine()` calls per affected row: left gutter and right gutter
+8. Fallback: if no silhouette yet (first frame), uses simple rectangular exclusion (160×220)
+
+### Chroma Key Algorithm
+
+- **Key color:** RGB(255, 0, 246) — magenta
+- **Method:** RGB Euclidean distance from key color
+- **Inner threshold:** 110 (distance < 110 → fully transparent)
+- **Outer threshold:** 180 (distance > 180 → fully opaque)
+- **Feather zone:** smoothstep cubic hermite `t²(3-2t)` for alpha between thresholds
+- **Spill suppression:** edge pixels have R and B channels pulled toward green channel to remove magenta fringing
 
 ---
 
@@ -134,43 +177,30 @@ Initially planned as YouTube embed. Changed to local MP4 because:
 ```
 subway-reader/
   public/
-    subway-surfers.mp4              # Green screen character video
+    subway-surfers.mp4              # Magenta-screen character video (720×720, ~20MB)
   src/
     App.tsx                         # Screen router (landing ↔ reader)
-    types.ts                        # AppScreen, ReaderSettings, FlowLine
+    types.ts                        # AppScreen, ReaderSettings, FlowLine, CharSilhouette
     index.css                       # Tailwind + dark theme base
     main.tsx                        # React entry point
     pages/
       LandingPage.tsx               # Upload PDF / paste text / "Start Reading"
-      ReaderPage.tsx                # Orchestrates TextCanvas + VideoPlayer + controls
+      ReaderPage.tsx                # Orchestrates TextCanvas + VideoPlayer + controls, owns silhouetteRef
     components/
       FileUploader.tsx              # Drag-drop + file input for .pdf/.txt
       TextPaster.tsx                # Textarea for raw paste
-      VideoPlayer.tsx               # Chroma-keyed video canvas (NEEDS FIXING)
-      TextCanvas.tsx                # Canvas text renderer with exclusion zone
+      VideoPlayer.tsx               # Chroma key + auto-crop + silhouette extraction
+      TextCanvas.tsx                # Canvas text renderer with silhouette-based exclusion
       ReaderControls.tsx            # Font size slider + back button
     hooks/
       usePretext.ts                 # prepareWithSegments lifecycle + font loading
       usePdfExtract.ts              # PDF extraction with loading/error state
       useAnimationFrame.ts          # rAF loop wrapper
     lib/
-      textFlowEngine.ts             # Core: flowTextAroundBlob() — lays out text around superellipse
-      blobContour.ts                # Superellipse math: getBlobEdges(), blobToClipPath()
+      textFlowEngine.ts             # Core: flowTextAroundBlob() — lays out text around silhouette
+      blobContour.ts                # ⚠️ DEAD CODE — superellipse math, no longer imported anywhere
       pdfExtractor.ts               # pdfjs-dist wrapper: File → text string
 ```
-
----
-
-## How the Exclusion Zone Works
-
-1. Video is `position: fixed` at viewport center
-2. In document-space, the blob center = `(viewportWidth/2, viewportHeight/2 + scrollTop)`
-3. For each text line at Y position:
-   - Query `getBlobEdges(yFromBlobCenter, blobHeight, blobWidth)` → returns `{left, right}` offsets or `null`
-   - If `null`: full-width line via `layoutNextLine(prepared, cursor, fullWidth)`
-   - If intersects: two `layoutNextLine()` calls — left gutter width and right gutter width
-   - Text flows continuously: left gutter → right gutter → next line
-4. Canvas paints only lines visible in viewport via `ctx.fillText()`
 
 ---
 
