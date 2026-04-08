@@ -22,6 +22,7 @@ export type Train = {
   speed: number   // px per frame (downward)
   colorScheme: TrainColorScheme
   track: number   // 0=left, 1=center, 2=right
+  hueRotation: number  // 0-360 degrees for sprite tinting
 }
 
 export type TrainRect = {
@@ -56,6 +57,8 @@ export function spawnTrain(viewportWidth: number): Train {
   const track = Math.random() < 0.5 ? 0 : 2
   const scheme = randomColorScheme()
   const cx = trackCenterX(track, viewportWidth)
+  const hueOptions = [0, 90, 180, 270]
+  const hueRotation = hueOptions[Math.floor(Math.random() * hueOptions.length)]
   return {
     x: cx - TRAIN_WIDTH / 2,
     y: -TRAIN_HEIGHT,
@@ -64,6 +67,7 @@ export function spawnTrain(viewportWidth: number): Train {
     speed: MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED),
     colorScheme: scheme,
     track,
+    hueRotation,
   }
 }
 
