@@ -6,7 +6,7 @@ import { TrainCanvas } from '../components/TrainCanvas'
 import { ReaderControls } from '../components/ReaderControls'
 import type { CharSilhouette } from '../types'
 import type { TrainRect, Train } from '../lib/trainObstacles'
-import { trackCenterX, TRAIN_WIDTH, TRAIN_HEIGHT } from '../lib/trainObstacles'
+import { trackCenterX, TRAIN_WIDTH } from '../lib/trainObstacles'
 
 type Props = {
   text: string
