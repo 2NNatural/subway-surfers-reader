@@ -1,10 +1,55 @@
 import { layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import type { FlowLine, CharSilhouette } from '../types'
+import type { TrainRect } from './trainObstacles'
 
 type LayoutNextLineFn = typeof layoutNextLine
 
 const GAP = 14 // px gap between text and character edge
-const MIN_GUTTER = 40 // minimum width to lay out text in
+const TRAIN_GAP = 8 // px gap between text and train edge
+
+type Segment = { left: number; right: number }
+
+/**
+ * Merge overlapping exclusion intervals, then compute the free (usable)
+ * segments within [contentLeft, contentRight].
+ */
+function freeSegments(
+  contentLeft: number,
+  contentRight: number,
+  exclusions: Segment[],
+): Segment[] {
+  if (exclusions.length === 0) return [{ left: contentLeft, right: contentRight }]
+
+  // Sort by left edge
+  const sorted = exclusions.slice().sort((a, b) => a.left - b.left)
+
+  // Merge overlapping
+  const merged: Segment[] = [sorted[0]]
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = merged[merged.length - 1]
+    if (sorted[i].left <= prev.right) {
+      prev.right = Math.max(prev.right, sorted[i].right)
+    } else {
+      merged.push(sorted[i])
+    }
+  }
+
+  // Compute free gaps
+  const free: Segment[] = []
+  let cursor = contentLeft
+  for (const ex of merged) {
+    const exLeft = Math.max(contentLeft, ex.left)
+    const exRight = Math.min(contentRight, ex.right)
+    if (exLeft > cursor) {
+      free.push({ left: cursor, right: exLeft })
+    }
+    cursor = Math.max(cursor, exRight)
+  }
+  if (cursor < contentRight) {
+    free.push({ left: cursor, right: contentRight })
+  }
+  return free
+}
 
 export function flowTextAroundBlob(
   prepared: PreparedTextWithSegments,
@@ -18,6 +63,8 @@ export function flowTextAroundBlob(
   blobHeight: number,
   padding: number,
   silhouette: CharSilhouette | null,
+  trainRects: TrainRect[],
+  fontSize: number,
 ): { lines: FlowLine[]; totalHeight: number } {
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
   let y = 0
@@ -32,6 +79,8 @@ export function flowTextAroundBlob(
 
   if (fullWidth <= 0) return { lines: [], totalHeight: 0 }
 
+  const minGutter = fontSize * 4.5
+
   const MAX_LINES = 50000
   let lineCount = 0
 
@@ -39,57 +88,59 @@ export function flowTextAroundBlob(
     const lineCenterY = y + lineHeight / 2
     const yFromBlobCenter = lineCenterY - blobCenterDocY
 
-    // Check if this line is within the character's vertical range
-    let exclusionLeft: number | null = null
-    let exclusionRight: number | null = null
+    // Collect all exclusion zones for this line
+    const exclusions: Segment[] = []
 
+    // Character silhouette exclusion
     if (silhouette && silhouette.height > 0) {
-      // Map document Y to silhouette row
       const silRow = Math.round(yFromBlobCenter + silhouette.height / 2)
       if (silRow >= 0 && silRow < silhouette.height) {
         const left = silhouette.leftEdges[silRow]
         const right = silhouette.rightEdges[silRow]
-        // Only create exclusion if this row has actual character pixels
         if (right > left) {
-          exclusionLeft = blobCenterX + left - GAP
-          exclusionRight = blobCenterX + right + GAP
+          exclusions.push({
+            left: blobCenterX + left - GAP,
+            right: blobCenterX + right + GAP,
+          })
         }
       }
     } else {
-      // Fallback to simple rectangular exclusion if no silhouette yet
       if (Math.abs(yFromBlobCenter) < blobHeight / 2) {
-        exclusionLeft = blobCenterX - blobWidth / 2 - GAP
-        exclusionRight = blobCenterX + blobWidth / 2 + GAP
+        exclusions.push({
+          left: blobCenterX - blobWidth / 2 - GAP,
+          right: blobCenterX + blobWidth / 2 + GAP,
+        })
       }
     }
 
-    if (exclusionLeft !== null && exclusionRight !== null) {
-      const leftWidth = Math.max(0, exclusionLeft - contentLeft)
-      const rightWidth = Math.max(0, contentRight - exclusionRight)
-
-      if (leftWidth >= MIN_GUTTER) {
-        const left = layoutNextLine(prepared, cursor, leftWidth)
-        if (!left) break
-        lines.push({ text: left.text, x: contentLeft, y, width: left.width })
-        cursor = left.end
+    // Train exclusion zones (viewport coords → document coords)
+    for (const tr of trainRects) {
+      const trainDocTop = tr.top + scrollTop
+      const trainDocBottom = tr.bottom + scrollTop
+      if (y + lineHeight > trainDocTop && y < trainDocBottom) {
+        exclusions.push({
+          left: tr.left - TRAIN_GAP,
+          right: tr.right + TRAIN_GAP,
+        })
       }
-
-      if (rightWidth >= MIN_GUTTER) {
-        const right = layoutNextLine(prepared, cursor, rightWidth)
-        if (!right) break
-        lines.push({ text: right.text, x: exclusionRight, y, width: right.width })
-        cursor = right.end
-      }
-
-      if (leftWidth < MIN_GUTTER && rightWidth < MIN_GUTTER) {
-        // both gutters too narrow, skip line
-      }
-    } else {
-      const line = layoutNextLine(prepared, cursor, fullWidth)
-      if (!line) break
-      lines.push({ text: line.text, x: contentLeft, y, width: line.width })
-      cursor = line.end
     }
+
+    // Compute free segments and filter out narrow gutters
+    const segments = freeSegments(contentLeft, contentRight, exclusions)
+      .filter((s) => s.right - s.left >= minGutter)
+
+    if (segments.length > 0) {
+      let broke = false
+      for (const seg of segments) {
+        const segWidth = seg.right - seg.left
+        const result = layoutNextLine(prepared, cursor, segWidth)
+        if (!result) { broke = true; break }
+        lines.push({ text: result.text, x: seg.left, y, width: result.width })
+        cursor = result.end
+      }
+      if (broke) break
+    }
+    // If no usable segments, skip this line (text continues on next line)
 
     y += lineHeight
     lineCount++

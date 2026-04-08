@@ -3,6 +3,7 @@ import { layoutNextLine, layout, type PreparedTextWithSegments } from '@chenglou
 import { useAnimationFrame } from '../hooks/useAnimationFrame'
 import { flowTextAroundBlob } from '../lib/textFlowEngine'
 import type { FlowLine, CharSilhouette } from '../types'
+import type { TrainRect } from '../lib/trainObstacles'
 
 type Props = {
   prepared: PreparedTextWithSegments
@@ -11,6 +12,7 @@ type Props = {
   blobWidth: number
   blobHeight: number
   silhouetteRef: MutableRefObject<CharSilhouette | null>
+  trainRectsRef: MutableRefObject<TrainRect[]>
 }
 
 export function TextCanvas({
@@ -20,6 +22,7 @@ export function TextCanvas({
   blobWidth,
   blobHeight,
   silhouetteRef,
+  trainRectsRef,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -83,6 +86,8 @@ export function TextCanvas({
       blobHeight,
       padding,
       silhouetteRef.current,
+      trainRectsRef.current,
+      fontSize,
     )
 
     linesRef.current = lines
