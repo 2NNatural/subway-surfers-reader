@@ -1,12 +1,26 @@
-const TRAIN_COLORS = ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#e67e22'] as const
+export type TrainColorScheme = {
+  body: string
+  accent: string
+  stripe: string
+}
+
+const TRAIN_COLOR_SCHEMES: TrainColorScheme[] = [
+  { body: '#C0392B', accent: '#8B8B00', stripe: '#922B21' },   // Red
+  { body: '#F4D03F', accent: '#8B8B00', stripe: '#C0392B' },   // Yellow
+  { body: '#2E86C1', accent: '#1B4F72', stripe: '#1A5276' },   // Blue
+  { body: '#17A589', accent: '#0E6655', stripe: '#117A65' },    // Teal
+  { body: '#E67E22', accent: '#8B8B00', stripe: '#CA6F1E' },   // Orange
+]
 
 export type Train = {
-  x: number      // center X position (viewport coords)
+  x: number      // left X position (viewport coords)
   y: number      // top Y position (viewport coords)
   width: number
   height: number
   speed: number   // px per frame (downward)
-  color: string
+  color: string   // kept for backward compat
+  colorScheme: TrainColorScheme
+  track: number   // 0=left, 1=center, 2=right
 }
 
 export type TrainRect = {
@@ -16,43 +30,40 @@ export type TrainRect = {
   bottom: number
 }
 
-const TRAIN_WIDTH = 90
-const TRAIN_HEIGHT = 140
+export const TRAIN_WIDTH = 110
+export const TRAIN_HEIGHT = 150
 const MIN_SPEED = 2.5
 const MAX_SPEED = 4.5
 const SPAWN_INTERVAL = 2500 // ms between spawns
 
-function randomColor(): string {
-  return TRAIN_COLORS[Math.floor(Math.random() * TRAIN_COLORS.length)]
+function randomColorScheme(): TrainColorScheme {
+  return TRAIN_COLOR_SCHEMES[Math.floor(Math.random() * TRAIN_COLOR_SCHEMES.length)]
 }
 
-function randomTrackX(viewportWidth: number): number {
-  // Trains appear on left or right side, avoiding the center character area
-  const margin = 120
-  const centerExclusion = viewportWidth * 0.35
-  const leftZone = margin
-  const rightZone = viewportWidth - margin - TRAIN_WIDTH
-  const centerLeft = (viewportWidth - centerExclusion) / 2
-  const centerRight = (viewportWidth + centerExclusion) / 2
-
-  // Pick left or right side randomly
-  if (Math.random() < 0.5) {
-    // Left side
-    return leftZone + Math.random() * Math.max(0, centerLeft - leftZone - TRAIN_WIDTH)
-  } else {
-    // Right side
-    return centerRight + Math.random() * Math.max(0, rightZone - centerRight)
-  }
+/**
+ * Returns the center X position for a given track (0=left, 1=center, 2=right).
+ * Tracks are evenly spaced across the viewport.
+ */
+export function trackCenterX(track: number, viewportWidth: number): number {
+  const trackSpacing = 160
+  const center = viewportWidth / 2
+  return center + (track - 1) * trackSpacing
 }
 
 export function spawnTrain(viewportWidth: number): Train {
+  // Trains spawn on left (0) or right (2) tracks only — never center
+  const track = Math.random() < 0.5 ? 0 : 2
+  const scheme = randomColorScheme()
+  const cx = trackCenterX(track, viewportWidth)
   return {
-    x: randomTrackX(viewportWidth),
+    x: cx - TRAIN_WIDTH / 2,
     y: -TRAIN_HEIGHT,
     width: TRAIN_WIDTH,
     height: TRAIN_HEIGHT,
     speed: MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED),
-    color: randomColor(),
+    color: scheme.body,
+    colorScheme: scheme,
+    track,
   }
 }
 

@@ -13,6 +13,8 @@ type Props = {
   blobHeight: number
   silhouetteRef: MutableRefObject<CharSilhouette | null>
   trainRectsRef: MutableRefObject<TrainRect[]>
+  characterOffsetX?: number
+  characterOffsetY?: number
 }
 
 export function TextCanvas({
@@ -23,6 +25,8 @@ export function TextCanvas({
   blobHeight,
   silhouetteRef,
   trainRectsRef,
+  characterOffsetX = 0,
+  characterOffsetY = 0,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -88,6 +92,8 @@ export function TextCanvas({
       silhouetteRef.current,
       trainRectsRef.current,
       fontSize,
+      characterOffsetX,
+      characterOffsetY,
     )
 
     linesRef.current = lines

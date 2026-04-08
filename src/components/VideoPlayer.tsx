@@ -6,6 +6,8 @@ type Props = {
   width: number
   height: number
   silhouetteRef: MutableRefObject<CharSilhouette | null>
+  offsetX: number
+  offsetY: number
 }
 
 // Chroma key constants — magenta background RGB(255, 0, 246)
@@ -20,7 +22,7 @@ const CROP_PAD = 10
 // Temporal smoothing: edges expand instantly, shrink slowly
 const SHRINK_RATE = 0.04
 
-export function VideoPlayer({ width, height, silhouetteRef }: Props) {
+export function VideoPlayer({ width, height, silhouetteRef, offsetX, offsetY }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bufferRef = useRef<HTMLCanvasElement | null>(null)
@@ -35,13 +37,12 @@ export function VideoPlayer({ width, height, silhouetteRef }: Props) {
       setNativeSize({ w: video.videoWidth, h: video.videoHeight })
       setVideoReady(true)
       video.play().catch(() => {
+        // Fallback: resume on click only (no keyboard — fully autonomous)
         const resume = () => {
           video.play()
           document.removeEventListener('click', resume)
-          document.removeEventListener('keydown', resume)
         }
         document.addEventListener('click', resume)
-        document.addEventListener('keydown', resume)
       })
     }
     video.addEventListener('loadeddata', onLoaded)
@@ -224,7 +225,7 @@ export function VideoPlayer({ width, height, silhouetteRef }: Props) {
           position: 'fixed',
           left: '50%',
           top: '50%',
-          transform: 'translate(-50%, -50%)',
+          transform: `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`,
           zIndex: 10,
           pointerEvents: 'none',
           width,

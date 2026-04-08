@@ -65,13 +65,15 @@ export function flowTextAroundBlob(
   silhouette: CharSilhouette | null,
   trainRects: TrainRect[],
   fontSize: number,
+  characterOffsetX: number = 0,
+  characterOffsetY: number = 0,
 ): { lines: FlowLine[]; totalHeight: number } {
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
   let y = 0
   const lines: FlowLine[] = []
 
-  const blobCenterDocY = viewportHeight / 2 + scrollTop
-  const blobCenterX = viewportWidth / 2
+  const blobCenterDocY = viewportHeight / 2 + scrollTop + characterOffsetY
+  const blobCenterX = viewportWidth / 2 + characterOffsetX
 
   const contentLeft = padding
   const contentRight = containerWidth - padding
