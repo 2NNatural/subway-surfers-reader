@@ -1,31 +1,40 @@
 # ROADMAP.md — Subway Reader
 
 > Single source of truth for what comes next. No competing task lists elsewhere.
+> Ordered by priority. Work top-down.
 
 ---
 
-## [NEXT] — Clean Up Dead Code
+## [BUG] Fix flipped train left/right sprites
 
-- Delete `src/lib/blobContour.ts` — superellipse math, no longer imported after silhouette rewrite
-- Remove `playwright` from devDependencies if no longer needed for debugging
-- Remove `public/analyze-frame.html` and `public/analyze.html` if they were recreated
+Train sprites are assigned to the wrong tracks: `train-right.png` renders on the left track and `train-left.png` on the right track. Swap the mapping in `TrainCanvas.tsx`.
 
-## [NEXT] — Verify Text Wrapping Works End-to-End
+## [BUG] Delete dead code
 
-- Paste a large block of text and confirm it wraps tightly around the character silhouette
-- Scroll through and verify the exclusion zone moves correctly with scroll
-- Test with a PDF upload
-- Check that font size slider triggers re-layout
-- Verify on different viewport sizes
+- Delete `src/lib/blobContour.ts` — superellipse math, no longer imported after Session 2 silhouette rewrite
+- Remove `public/analyze-frame.html` and `public/analyze.html` if present
+- Audit for any other orphaned files
 
-## [NEXT] — Tune Silhouette Wrapping Feel
+## [FEATURE] Improve train perspective / visual quality
+
+Noah wants trains angled so you can see front, top, and inside. The static sprites show this but don't change as trains scroll closer. Sprite sheet approach was rejected (too jarring). Possible approaches:
+- WebGL runtime rendering of the OBJ model (real-time camera angle based on Y position)
+- Fewer interpolation steps with eased transitions
+- Subtle CSS transform (scale + slight rotate) as trains approach
+- Accept static sprites as good enough
+
+## [CLEANUP] Remove Playwright from devDependencies
+
+Only needed for headless frame analysis (Session 2) and sprite rendering (Session 3). Can be removed now that sprites are committed. Re-add if needed later.
+
+## [FEATURE] Tune silhouette wrapping feel
 
 - Adjust `GAP` (currently 14px in `textFlowEngine.ts`) — may need per-user preference
-- Adjust `SHRINK_RATE` (currently 0.04 in `VideoPlayer.tsx`) — controls how fast text closes in when character moves
+- Adjust `SHRINK_RATE` (currently 0.04 in `VideoPlayer.tsx`) — controls how fast text closes in
 - Adjust `CROP_PAD` (currently 10 in `VideoPlayer.tsx`)
-- Consider whether `BLOB_WIDTH`/`BLOB_HEIGHT` (160×220 in `ReaderPage.tsx`) need to be dynamic based on actual detected character size
+- Consider making `BLOB_WIDTH`/`BLOB_HEIGHT` (160×220 in `ReaderPage.tsx`) dynamic based on actual detected character size
 
-## [SOON] — Polish & Edge Cases
+## [POLISH] Loading & edge cases
 
 - Loading spinner / transition animation from landing → reader
 - Handle empty text gracefully
@@ -33,26 +42,25 @@
 - Window resize → re-layout
 - Scrollbar jump fix (document height estimation)
 
-## [SOON] — Video Controls
+## [FEATURE] Video controls
 
-- Let user pick their own MP4 video file (file picker on reader page or landing page)
+- Let user pick their own MP4 video file
 - Adjustable video size (drag handle or presets)
 
-## [LATER] — Performance Optimization
+## [PERF] Performance optimization
 
 - Profile chroma key + silhouette on lower-end machines (518,400 pixels per frame)
 - Consider WebGL shader for chroma key if CPU approach is too slow
 - For very long documents (100+ pages), profile the `layoutNextLine` loop
-- If >2ms per frame, implement cursor-caching: pre-compute full-width lines, use their cursors to jump to the exclusion zone region
 - Virtualize canvas painting (only compute layout for visible + buffer lines)
 - Consider making crop box shrink slowly (currently only grows)
 
-## [LATER] — TXT File Formatting
+## [FEATURE] TXT file formatting
 
 - Preserve paragraph breaks from `.txt` files
 - Handle common text formatting (headers, bullet points) if detectable
 
-## [MAYBE] — Additional Features
+## [MAYBE] Additional features
 
 - Multiple exclusion shape modes: silhouette (current), ellipse, rounded rect
 - Dark/light theme toggle

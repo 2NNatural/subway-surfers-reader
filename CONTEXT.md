@@ -53,44 +53,22 @@ Noah provided a reference image showing text wrapping around an irregular dragon
 - **Current display size:** 160×220px (set in `ReaderPage.tsx`)
 - Canvas auto-crops to character bounds each frame, then CSS scales to display size
 
----
+### Train Obstacles — Behavioral Requirements
 
-## Corrections Made Across Sessions
+> Noah wants train obstacles scrolling top-to-bottom through the text, and the character to navigate between three tracks (left, center, right), auto-jumping over trains.
 
-### Session 1: Chroma Key Targeting Wrong Color
+- **No keyboard input.** The character is fully autonomous — random lane switches, auto-dodge, auto-jump. Noah explicitly rejected keyboard controls.
+- **Train visuals must match the real Subway Surfers game.** Noah rejected hand-drawn Canvas 2D trains ("ugly and hand drawn") and low-quality renders. Current approach uses pre-rendered sprites from an actual 3D game model.
+- **Text must exclude around trains** the same way it excludes around the character silhouette — trains get rectangular exclusion zones with min gutter width.
+- **Train left/right perspective:** Noah wants the angled view where you can see the front, top, and inside of the train. Reference images were provided.
+- **Dynamic perspective was rejected** in sprite-sheet form (8-frame sheets) — user said "it's worse" and reverted. A different approach is needed if this is revisited.
 
-Noah said: **"It doesn't look like a subway surfers character at all, did you base it off the video?"**
+### Session Protocol
 
-Root cause: Chroma key algorithm was written blindly targeting green (hue 70°–170°). The video background is actually **magenta RGB(255, 0, 246)**. The filename "GreenScreen" was misleading.
-
-Fix (Session 2): Used Playwright + Canvas to extract a frame and analyze actual pixel data. Rewrote chroma key to target magenta using RGB Euclidean distance.
-
-### Session 2: Video Not Rendering (Black Rectangle)
-
-Noah said: **"there was no change, it is still a black blob with no color, that is not fitted to a recognizable character shape."**
-
-Root cause: Three compounding issues:
-1. `className="hidden"` uses `display:none` — browsers skip video frame decoding for hidden elements
-2. `video.paused` guard in the animation loop meant nothing rendered if autoplay was blocked
-3. Canvas defaulted to opaque 300×150 when never drawn to
-
-Fix: Replaced `className="hidden"` with offscreen positioning (1×1px, opacity 0). Added `video.play()` with click/keydown fallback. Removed `video.paused` guard.
-
-### Session 2: Huge Black Bubble Around Character
-
-Noah said: **"there's a HUGE black bubble around him. Can we crop to around the sprite exactly?"**
-
-Root cause: The 720×720 video frame was being rendered at 300×400 display size. The character is small within the frame, so most of the canvas was transparent (appears black on dark background), and the 300×400 exclusion zone pushed text far away.
-
-Fix: Added runtime auto-crop — VideoPlayer detects character bounds per frame and only renders the cropped region. Reduced exclusion zone from 300×400 to 160×220.
-
-### Session 2: Text Should Follow Character Shape
-
-Noah said: **"tailor it to actually be a wrap around the character"**
-
-Root cause: The superellipse exclusion zone was a static generic shape, not fitted to the character.
-
-Fix: Replaced the superellipse system with real per-frame silhouette tracking. VideoPlayer builds per-row edge maps during chroma key processing. Text flow engine reads those edges (via shared ref) to create variable-width exclusion zones matching the actual character outline. Temporal smoothing prevents text jitter.
+- Never make changes outside scope without asking. Flag unrelated bugs, don't fix silently.
+- Check in after each logical chunk. Keep responses tight.
+- Read CONTEXT.md, PROGRESS.md, ROADMAP.md, README.md at session start.
+- Summarize env check (Node, npm, git, deps) before starting work.
 
 ---
 
@@ -105,7 +83,9 @@ Fix: Replaced the superellipse system with real per-frame silhouette tracking. V
 | Styling | Tailwind CSS v4 | `@tailwindcss/vite` plugin |
 | Font | Inter | Loaded via Google Fonts |
 | Video | HTML5 `<video>` + Canvas chroma key | Magenta screen MP4, real-time per-pixel processing |
-| Dev Tool | Playwright | Installed as devDep for headless frame analysis. Can be removed. |
+| Train Sprites | Pre-rendered PNGs from 3D OBJ model | Rendered via Three.js + Playwright from actual Subway Surfers game model |
+| Hosting | Vercel | Connected to GitHub repo |
+| Dev Tool | Playwright | Installed as devDep for headless frame analysis + sprite rendering. Can be removed. |
 
 ### Pretext API (Confirmed from `@chenglou/pretext` v0.0.3)
 
@@ -148,6 +128,22 @@ Changed to local MP4 because:
 
 `display:none` prevents browsers from decoding video frames. The `<video>` element is positioned at 1×1px with opacity 0, which keeps it decodable without being visible.
 
+### Why pre-rendered sprites for trains (not Canvas 2D drawing)
+
+Noah rejected hand-drawn Canvas 2D trains as "ugly and hand drawn." Solution: downloaded the actual Subway Surfers train 3D model (OBJ format from The Models Resource), rendered three angles (left, center, right) via Three.js in a headless Playwright browser, exported as transparent PNGs. These provide game-accurate visuals without runtime 3D rendering overhead.
+
+### Why static sprites (not sprite sheets)
+
+Dynamic perspective via 8-frame sprite sheets was attempted (interpolating angle as trains scroll down). Noah said "it's worse" — the animation was jarring. Reverted to static sprites per angle. Any future dynamic approach needs a different strategy (possibly WebGL runtime rendering or smoother interpolation).
+
+### Train text exclusion
+
+Trains get rectangular exclusion zones (same `TrainRect` system) that integrate with the text flow engine. A minimum gutter width (`fontSize * 4.5`) prevents word clipping in narrow gaps between trains and the viewport edge.
+
+### Autonomous character movement
+
+No keyboard/touch input. The character randomly switches lanes and auto-dodges/auto-jumps over trains. This was an explicit requirement from Noah — the reader should not be distracted by gameplay controls.
+
 ---
 
 ## How the Silhouette Wrapping Works
@@ -172,12 +168,33 @@ Changed to local MP4 because:
 
 ---
 
+## How the Train System Works
+
+1. **trainObstacles.ts** manages train state: spawning, movement, collision detection, and color schemes
+2. Trains spawn at random intervals at the top of the viewport on one of 3 tracks (left=0, center=1, right=2)
+3. Each train has a color scheme (red, yellow, blue, silver, purple, green) and a hue rotation for sprite tinting
+4. **TrainCanvas** renders trains using pre-rendered sprite PNGs:
+   - `train-right.png` → left track (track 0) — shows right side of train
+   - `train-center.png` → center track (track 1) — shows front of train
+   - `train-left.png` → right track (track 2) — shows left side of train
+   - **Note: left/right assignment is currently flipped** — user reported this but fix was deferred
+5. Character auto-dodges by switching to an unoccupied lane; auto-jumps if no safe lane exists
+6. `TrainRect[]` are passed to the text flow engine via `trainRectsRef` for text exclusion
+7. Min gutter width (`fontSize * 4.5`) prevents word clipping near trains
+
+---
+
 ## File Structure
 
 ```
 subway-reader/
   public/
     subway-surfers.mp4              # Magenta-screen character video (720×720, ~20MB)
+    train-left.png                  # 3D-rendered train sprite, left angle (~84KB)
+    train-right.png                 # 3D-rendered train sprite, right angle (~89KB)
+    train-center.png                # 3D-rendered train sprite, front angle (~33KB)
+    favicon.svg                     # App favicon
+    icons.svg                       # UI icon sprites
   src/
     App.tsx                         # Screen router (landing ↔ reader)
     types.ts                        # AppScreen, ReaderSettings, FlowLine, CharSilhouette
@@ -185,19 +202,21 @@ subway-reader/
     main.tsx                        # React entry point
     pages/
       LandingPage.tsx               # Upload PDF / paste text / "Start Reading"
-      ReaderPage.tsx                # Orchestrates TextCanvas + VideoPlayer + controls, owns silhouetteRef
+      ReaderPage.tsx                # Orchestrates TextCanvas + VideoPlayer + TrainCanvas + controls
     components/
       FileUploader.tsx              # Drag-drop + file input for .pdf/.txt
       TextPaster.tsx                # Textarea for raw paste
       VideoPlayer.tsx               # Chroma key + auto-crop + silhouette extraction
-      TextCanvas.tsx                # Canvas text renderer with silhouette-based exclusion
+      TextCanvas.tsx                # Canvas text renderer with silhouette + train exclusion
+      TrainCanvas.tsx               # Train obstacle renderer using sprite PNGs
       ReaderControls.tsx            # Font size slider + back button
     hooks/
       usePretext.ts                 # prepareWithSegments lifecycle + font loading
       usePdfExtract.ts              # PDF extraction with loading/error state
       useAnimationFrame.ts          # rAF loop wrapper
     lib/
-      textFlowEngine.ts             # Core: flowTextAroundBlob() — lays out text around silhouette
+      textFlowEngine.ts             # Core: flowTextAroundBlob() — lays out text around silhouette + train rects
+      trainObstacles.ts             # Train spawning, movement, collision, color schemes, rect calculation
       blobContour.ts                # ⚠️ DEAD CODE — superellipse math, no longer imported anywhere
       pdfExtractor.ts               # pdfjs-dist wrapper: File → text string
 ```
@@ -210,3 +229,14 @@ subway-reader/
 - Clean, minimal UI — no clutter
 - Font: Inter (Google Fonts)
 - Reader controls: floating bottom-right panel with backdrop blur
+
+---
+
+## 3D Model Asset Reference
+
+The train sprites were rendered from a real Subway Surfers 3D model:
+- **Source:** The Models Resource (https://models.spriters-resource.com/media/assets/299/302286.zip)
+- **Format:** OBJ + MTL + `trains.png` texture
+- **Render method:** Three.js + OBJLoader/MTLLoader in headless Playwright browser
+- **Output:** Three transparent PNGs at different camera angles (left, center, right)
+- **Local model files:** Not committed to repo. Stored at `/home/user/workspace/subway-train-model/Subway/`

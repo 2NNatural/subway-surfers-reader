@@ -2,11 +2,106 @@
 
 ---
 
+## Session 3 — 2026-04-07 / 2026-04-08
+
+### Completed
+
+- **Train obstacles + 3-track system** (commit `210a6b0` → `c8b1e5c`)
+  - New files: `trainObstacles.ts` (spawn/move/collision logic), `TrainCanvas.tsx` (renderer)
+  - Trains spawn at top of viewport, scroll downward on 3 tracks (left, center, right)
+  - Character starts on center track, switches lanes via keyboard (later removed)
+  - Auto-jump when train is in same lane and close
+  - Train color schemes: red, yellow, blue, silver, purple, green
+  - 6 color palettes with body/roof/stripe/accent
+
+- **Text exclusion for trains**
+  - `TrainRect[]` integrated into `textFlowEngine.ts` — text wraps around train rectangles
+  - Same exclusion pattern as character silhouette but rectangular
+  - Min gutter width (`fontSize * 4.5`) added to prevent word clipping in narrow gaps
+
+- **Fixed train visual regression + min gutter** (commit `eb5f585`)
+  - Restored colorful Subway Surfers-style trains after a regression made them plain
+  - Added minimum gutter width to fix word clipping near viewport edges
+
+- **Fixed Vercel build error** (commit `9d07e1d`)
+  - Removed unused `TRAIN_HEIGHT` import that broke production build
+
+- **Removed keyboard input → fully autonomous character** (commit `c8b1e5c`)
+  - Noah explicitly said "there shouldn't be any keyboard input"
+  - Character now: randomly switches lanes, auto-dodges trains, auto-jumps when cornered
+  - No user interaction with the gameplay — purely visual
+
+- **Attempted 3/4 oblique perspective trains** (commits `a204548`, Canvas 2D)
+  - Drew trains with overhead oblique projection in Canvas 2D
+  - Noah rejected: "ugly and hand drawn"
+
+- **Switched to actual game model sprites** (commit `fccdd8f`)
+  - Downloaded real Subway Surfers train OBJ model from The Models Resource
+  - Rendered 3 angles via Three.js + Playwright headless browser
+  - Exported transparent PNGs: `train-left.png` (84KB), `train-right.png` (89KB), `train-center.png` (33KB)
+  - Replaced Canvas 2D drawing with `<img>` sprite rendering in TrainCanvas
+
+- **Attempted dynamic perspective sprite sheets** (commit `d16944e`)
+  - Rendered 8-frame sprite sheets per angle for smooth perspective interpolation as trains scroll
+  - Noah said "it's worse" — animation was jarring/distracting
+
+- **Reverted to static sprites** (commit `fa69268` — current HEAD)
+  - Reverted `d16944e`, restored the clean static sprites from `fccdd8f`
+  - This is the current working state
+
+### Files Created (Session 3)
+
+| File | Purpose |
+|------|---------|
+| `src/lib/trainObstacles.ts` | Train spawn/move/collision/color logic |
+| `src/components/TrainCanvas.tsx` | Train renderer using sprite PNGs |
+| `public/train-left.png` | 3D-rendered sprite, left angle |
+| `public/train-right.png` | 3D-rendered sprite, right angle |
+| `public/train-center.png` | 3D-rendered sprite, front angle |
+
+### Files Modified (Session 3)
+
+| File | Changes |
+|------|---------|
+| `src/lib/textFlowEngine.ts` | Added `TrainRect[]` exclusion + min gutter width |
+| `src/pages/ReaderPage.tsx` | Integrated TrainCanvas, `trainRectsRef`, autonomous character logic |
+| `src/components/TextCanvas.tsx` | Reads `trainRectsRef` for train exclusion zones |
+| `src/types.ts` | Added `Train`, `TrainRect`, `TrainColorScheme` types |
+
+### Known Bugs / Issues (End of Session 3)
+
+1. **Train left/right sprites are flipped** — `train-right.png` is assigned to the left track and vice versa. User reported but fix was deferred during the revert.
+
+2. **Dynamic perspective rejected** — Sprite sheet approach was too jarring. If revisited, needs a different strategy (WebGL runtime rendering, smoother interpolation, or just keeping static).
+
+3. **`blobContour.ts` is still dead code** — Superellipse math from Session 1, no longer imported. Should be deleted.
+
+4. **Playwright still in devDependencies** — Was used for frame analysis (Session 2) and sprite rendering (Session 3). Can be removed if no longer needed.
+
+5. **Document height estimation is approximate** — May cause scrollbar jumps on first scroll.
+
+6. **Crop box only grows, never shrinks** — Minor visual issue if character moves to smaller area.
+
+### Commit Log (Session 3, chronological)
+
+```
+c8b1e5c  Add autonomous character movement and Subway Surfers-style trains
+eb5f585  Add colorful Subway Surfers-style trains and fix narrow gutter text clipping
+9d07e1d  Fix build: remove unused TRAIN_HEIGHT import
+a204548  Redraw trains with correct 3/4 overhead oblique projection
+54275a8  Replace hand-drawn Canvas 2D trains with sprite images
+fccdd8f  Replace placeholder train sprites with actual game model renders
+d16944e  Replace static train sprites with sprite sheets for dynamic perspective
+fa69268  Revert "Replace static train sprites with sprite sheets for dynamic perspective"  ← current HEAD
+```
+
+---
+
 ## Session 2 — 2026-04-02
 
 ### Completed
 
-- **🟢 Chroma key fixed — was targeting wrong color entirely**
+- **Chroma key fixed — was targeting wrong color entirely**
   - Used Playwright to extract a video frame and analyze actual pixel data
   - Discovered background is **magenta RGB(255, 0, 246)**, not green (filename was misleading)
   - Rewrote chroma key: RGB Euclidean distance from magenta key color
@@ -14,20 +109,20 @@
   - Smoothstep cubic hermite feathering eliminates jagged edges
   - Magenta spill suppression on edge pixels (R/B pulled toward G channel)
 
-- **🟢 Video rendering fixed — was showing black rectangle**
+- **Video rendering fixed — was showing black rectangle**
   - `className="hidden"` (display:none) prevented browsers from decoding video frames → replaced with offscreen positioning (1×1px, opacity 0)
   - Added `video.play()` call with click/keydown fallback for autoplay-blocked browsers
   - Removed `video.paused` guard so current frame always renders even when paused
 
-- **🟢 Auto-crop to character bounds**
+- **Auto-crop to character bounds**
   - VideoPlayer detects character pixel bounds each frame during chroma key pass
   - Canvas resized to crop region (grow-only, never shrinks to prevent flicker)
   - Eliminated the huge black bubble around the small character
 
-- **🟢 Exclusion zone tightened**
+- **Exclusion zone tightened**
   - Reduced from 300×400 to 160×220 display pixels
 
-- **🟢 Real silhouette-based text wrapping**
+- **Real silhouette-based text wrapping**
   - Replaced superellipse exclusion with per-frame character silhouette
   - VideoPlayer builds per-row left/right edge maps during chroma key processing
   - Edges stored as `CharSilhouette` type (Float32Array) shared via React ref
@@ -40,18 +135,6 @@
 - **Dead code created:** `blobContour.ts` — superellipse math no longer imported anywhere
 - **Dev dependency added:** `playwright` (for headless frame analysis, can be removed)
 - **Build verification:** `npx tsc --noEmit` passes clean
-
-### Known Bugs / Issues
-
-1. **`blobContour.ts` is dead code** — no longer imported by anything after silhouette rewrite. Should be deleted.
-
-2. **Playwright installed as devDep** — was needed for video frame analysis this session. Can be removed if not needed again.
-
-3. **Document height estimation is approximate** — initial height from full-width `layout()` + `blobHeight * 2` buffer. Updates dynamically if actual layout height diverges. May cause scrollbar jumps on first scroll.
-
-4. **Crop box only grows, never shrinks** — if the character moves to a smaller area later in the video, the crop box stays at the maximum size seen so far. Minor visual issue.
-
-5. **Performance on long documents untested** — the per-pixel chroma key + silhouette extraction runs every frame for 720×720 = 518,400 pixels. Need to profile on lower-end machines.
 
 ---
 
@@ -104,3 +187,10 @@
 | 2026-04-02 | Video rendering fixed | display:none → offscreen, autoplay recovery |
 | 2026-04-02 | Auto-crop to character | Canvas crops to sprite bounds per frame |
 | 2026-04-02 | Silhouette text wrapping | Text follows real character outline, replaces superellipse |
+| 2026-04-07 | Train obstacles + 3-track | Trains spawn top→bottom, character dodges on 3 lanes |
+| 2026-04-07 | Text exclusion for trains | TrainRect[] integrated into text flow engine |
+| 2026-04-07 | Train visual regression fix | Restored colorful trains + min gutter width |
+| 2026-04-07 | Vercel build fix | Removed unused TRAIN_HEIGHT import |
+| 2026-04-07 | Autonomous character | Removed keyboard input, fully random movement |
+| 2026-04-08 | 3D model sprites | Real game model rendered via Three.js → transparent PNGs |
+| 2026-04-08 | Dynamic perspective reverted | Sprite sheets rejected, back to static sprites |
